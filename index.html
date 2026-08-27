@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Guacamole Gateway</title>
     <style>
-        body { margin: 0; background: #0b0e14; display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column; font-family: Arial, sans-serif; }
+        body { background: #0b0e14; display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column; font-family: Arial, sans-serif; }
         #status { color: #aaa; margin-bottom: 10px; font-size: 14px; }
         #status.loading { color: #ffa500; }
         #status.success { color: #0f0; }
         #status.error { color: #f00; }
-        iframe { width: 95%; height: 95vh; border: none; border-radius: 8px; background: #000; }
         #loading { color: #fff; font-size: 18px; }
         #retryBtn { margin-top: 10px; padding: 10px 24px; background: #2d7aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; display: none; }
         #retryBtn:hover { background: #1a5fd0; }
@@ -20,38 +19,44 @@
 
     <div id="status">⏳ 接続準備中...</div>
     <div id="loading">🔄 接続中...</div>
-    <iframe id="guacFrame" style="display:none;"></iframe>
     <button id="retryBtn" onclick="startTunnel()">🔄 再試行</button>
 
     <script>
         const API_WORKER = 'https://url.kurea-ch124.workers.dev/start';
         const API_WORKER_TAILSCALE = 'https://url.kurea-ch124.workers.dev/start?t=tailscale';
         const TOKEN = 'M0TrSmymz3L9rMEO5KOd6XE1XOD3zJxI';
-        const TIMEOUT = 800000;
+        const TIMEOUT = 30000;
 
         const statusEl = document.getElementById('status');
         const loadingEl = document.getElementById('loading');
-        const frame = document.getElementById('guacFrame');
         const retryBtn = document.getElementById('retryBtn');
+
+        let newWindow = null;
 
         function setStatus(msg, type = 'loading') {
             statusEl.textContent = msg;
             statusEl.className = type;
         }
 
-        function showIframe(url) {
-            loadingEl.style.display = 'none';
-            frame.style.display = 'block';
-            frame.src = url + '/guacamole';
-            setStatus('✅ 接続成功！', 'success');
-            retryBtn.style.display = 'none';
-        }
-
         function showError(msg) {
             loadingEl.style.display = 'none';
-            frame.style.display = 'none';
             setStatus('❌ ' + msg, 'error');
             retryBtn.style.display = 'inline-block';
+        }
+
+        function openTunnel(url) {
+            loadingEl.style.display = 'none';
+            setStatus('✅ 接続成功！ 別タブで開きます', 'success');
+            retryBtn.style.display = 'none';
+
+            // 別タブで開く
+            newWindow = window.open(url + '/guacamole', '_blank');
+            if (!newWindow) {
+                // ポップアップブロックされた場合
+                alert('ポップアップがブロックされました。許可してください。');
+                setStatus('⚠️ ポップアップを許可してください', 'error');
+                retryBtn.style.display = 'inline-block';
+            }
         }
 
         function fetchWithTimeout(url, options, timeout) {
@@ -74,22 +79,9 @@
             return data.tunnel_url;
         }
 
-        async function checkTunnelAccess(url) {
-            try {
-                const res = await fetchWithTimeout(url + '/guacamole', {
-                    method: 'HEAD',
-                    mode: 'no-cors'
-                }, 3000);
-                return true;
-            } catch (e) {
-                return false;
-            }
-        }
-
         async function startTunnel() {
             setStatus('🔄 接続中...', 'loading');
             loadingEl.style.display = 'block';
-            frame.style.display = 'none';
             retryBtn.style.display = 'none';
 
             const apis = [
@@ -101,12 +93,11 @@
                 try {
                     setStatus(`🔄 ${api.name}経由で接続中...`, 'loading');
                     const tunnelUrl = await callAPI(api.url);
+                    console.log(`✅ ${api.name} tunnel:`, tunnelUrl);
 
-                    const accessible = await checkTunnelAccess(tunnelUrl);
-                    if (accessible) {
-                        showIframe(tunnelUrl);
-                        return;
-                    }
+                    // 別タブで開く（CORS回避）
+                    openTunnel(tunnelUrl);
+                    return;
                 } catch (e) {
                     console.warn(`⚠️ ${api.name} failed:`, e.message);
                 }
@@ -115,6 +106,7 @@
             showError('全ての接続方法が失敗しました');
         }
 
+        // 自動起動
         startTunnel();
     </script>
 
