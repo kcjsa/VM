@@ -26,6 +26,7 @@
         const API_WORKER_TAILSCALE = 'https://url.kurea-ch124.workers.dev/start?t=tailscale';
         const TOKEN = 'M0TrSmymz3L9rMEO5KOd6XE1XOD3zJxI';
         const TIMEOUT = 30000;
+        const WAIT_BEFORE_OPEN = 2000; // 2秒待機
 
         const statusEl = document.getElementById('status');
         const loadingEl = document.getElementById('loading');
@@ -46,17 +47,18 @@
 
         function openTunnel(url) {
             loadingEl.style.display = 'none';
-            setStatus('✅ 接続成功！ 別タブで開きます', 'success');
+            setStatus(`✅ 接続成功！ ${WAIT_BEFORE_OPEN / 1000}秒後に開きます`, 'success');
             retryBtn.style.display = 'none';
 
-            // 別タブで開く
-            newWindow = window.open(url + '/guacamole', '_blank');
-            if (!newWindow) {
-                // ポップアップブロックされた場合
-                alert('ポップアップがブロックされました。許可してください。');
-                setStatus('⚠️ ポップアップを許可してください', 'error');
-                retryBtn.style.display = 'inline-block';
-            }
+            // 2秒待ってから開く
+            setTimeout(() => {
+                newWindow = window.open(url + '/guacamole', '_blank');
+                if (!newWindow) {
+                    alert('ポップアップがブロックされました。許可してください。');
+                    setStatus('⚠️ ポップアップを許可してください', 'error');
+                    retryBtn.style.display = 'inline-block';
+                }
+            }, WAIT_BEFORE_OPEN);
         }
 
         function fetchWithTimeout(url, options, timeout) {
@@ -95,7 +97,7 @@
                     const tunnelUrl = await callAPI(api.url);
                     console.log(`✅ ${api.name} tunnel:`, tunnelUrl);
 
-                    // 別タブで開く（CORS回避）
+                    // 2秒待ってから開く
                     openTunnel(tunnelUrl);
                     return;
                 } catch (e) {
