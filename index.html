@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guacamole Gateway</title>
+    <style>
+        body { margin: 0; background: #0b0e14; display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column; font-family: Arial, sans-serif; }
+        #status { color: #aaa; margin-bottom: 10px; font-size: 14px; }
+        #status.loading { color: #ffa500; }
+        #status.success { color: #0f0; }
+        #status.error { color: #f00; }
+        iframe { width: 95%; height: 95vh; border: none; border-radius: 8px; background: #000; }
+        #loading { color: #fff; font-size: 18px; }
+        #retryBtn { margin-top: 10px; padding: 10px 24px; background: #2d7aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; display: none; }
+        #retryBtn:hover { background: #1a5fd0; }
+    </style>
+</head>
+<body>
+
+    <div id="status">⏳ 接続準備中...</div>
+    <div id="loading">🔄 接続中...</div>
+    <iframe id="guacFrame" style="display:none;"></iframe>
+    <button id="retryBtn" onclick="startTunnel()">🔄 再試行</button>
+
+    <script>
+        const API_WORKER = 'https://url.kurea-ch124.workers.dev/start';
+        const API_PORTMAP = 'http://kx-dns-33125.portmap.host:33125/start';
+        const API_TAILSCALE = 'https://url.kurea-ch124.workers.dev/start?t=tailscale';
+        const TOKEN = 'M0TrSmymz3L9rMEO5KOd6XE1XOD3zJxI';
+        const TIMEOUT = 5000;
+
+        const statusEl = document.getElementById('status');
+        const loadingEl = document.getElementById('loading');
+        const frame = document.getElementById('guacFrame');
+        const retryBtn = document.getElementById('retryBtn');
+
+        let currentTunnelUrl = null;
+
+        function setStatus(msg, type = 'loading') {
+            statusEl.textContent = msg;
+            statusEl.className = type;
+        }
+
+        function showIframe(url) {
+            loadingEl.style.display = 'none';
+            frame.style.display = 'block';
+            frame.src = url + '/guacamole';
+            setStatus('✅ 接続成功！', 'success');
+            retryBtn.style.display = 'none';
+        }
+
+        function showError(msg) {
+            loadingEl.style.display = 'none';
+            frame.style.display = 'none';
+            setStatus('❌ ' + msg, 'error');
+            retryBtn.style.display = 'inline-block';
+        }
+
+        function fetchWithTimeout(url, options, timeout) {
+            return Promise.race([
+                fetch(url, options),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('Timeout')), timeout)
+                )
+            ]);
+        }
+
+        async function checkTunnelAccess(url) {
+            try {
+                // HEADリクエストでトンネルが生きているか確認（5秒待機）
+                const res = await fetchWithTimeout(url + '/guacamole', {
+                    method: 'HEAD',
+                    mode: 'no-cors'
+                }, 3000);
+                return true;
+            } catch (e) {
+                console.warn('⚠️ Tunnel access check failed:', e);
+                return false;
+            }
+        }
+
+        async function callAPI(apiUrl, isTailscale = false) {
+            const url = isTailscale ? apiUrl : apiUrl;
+            const res = await fetchWithTimeout(url, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${TOKEN}` }
+            }, TIMEOUT);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            if (!data.tunnel_url) throw new Error('No tunnel_url in response');
+            return data.tunnel_url;
+        }
+
+        async function startTunnel() {
+            setStatus('🔄 接続中...', 'loading');
+            loadingEl.style.display = 'block';
+            frame.style.display = 'none';
+            retryBtn.style.display = 'none';
+
+            // 試行するAPIリスト（優先順位）
+            const apis = [
+                { name: 'Worker', url: API_WORKER, isTailscale: false },
+                { name: 'portmap.io', url: API_PORTMAP, isTailscale: false },
+                { name: 'Tailscale', url: API_TAILSCALE, isTailscale: true }
+            ];
+
+            for (let i = 0; i < apis.length; i++) {
+                const api = apis[i];
+                setStatus(`🔄 ${api.name}経由で接続中...`, 'loading');
+
+                try {
+                    // APIを叩いてトンネルURLを取得
+                    const tunnelUrl = await callAPI(api.url, api.isTailscale);
+                    console.log(`✅ ${api.name} success:`, tunnelUrl);
+
+                    // トンネルURLにアクセスできるかチェック
+                    const accessible = await checkTunnelAccess(tunnelUrl);
+                    if (accessible) {
+                        showIframe(tunnelUrl);
+                        return;
+                    } else {
+                        console.warn(`⚠️ ${api.name} tunnel URL not accessible, trying next...`);
+                    }
+                } catch (e) {
+                    console.warn(`⚠️ ${api.name} failed:`, e.message);
+                }
+            }
+
+            // 全部失敗
+            showError('取得できませんでした (全ての経路が失敗しました)');
+        }
+
+        // 実行
+        startTunnel();
+    </script>
+
+</body>
+</html>
