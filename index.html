@@ -5,34 +5,88 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Guacamole Gateway</title>
     <style>
-        body { background: #0b0e14; display: flex; justify-content: center; align-items: center; height: 100vh; flex-direction: column; font-family: Arial, sans-serif; }
-        #status { color: #aaa; margin-bottom: 10px; font-size: 14px; }
-        #status.loading { color: #ffa500; }
-        #status.success { color: #0f0; }
-        #status.error { color: #f00; }
-        #loading { color: #fff; font-size: 18px; }
-        #retryBtn { margin-top: 10px; padding: 10px 24px; background: #2d7aff; color: #fff; border: none; border-radius: 6px; cursor: pointer; display: none; }
-        #retryBtn:hover { background: #1a5fd0; }
+        body {
+            background: #0b0e14;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        #status {
+            color: #aaa;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        #url-box {
+            background: #1a1f2b;
+            color: #7dffb3;
+            padding: 16px 20px;
+            border-radius: 10px;
+            border: 1px solid #2a3344;
+            font-size: 16px;
+            word-break: break-all;
+            max-width: 90%;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        #url-box:hover {
+            background: #2a3344;
+        }
+        #url-box a {
+            color: #7dffb3;
+            text-decoration: none;
+        }
+        #loading {
+            color: #fff;
+            font-size: 18px;
+        }
+        .btn {
+            margin-top: 20px;
+            padding: 12px 32px;
+            background: #2d7aff;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .btn:hover {
+            background: #1a5fd0;
+        }
+        .note {
+            color: #666;
+            font-size: 12px;
+            margin-top: 12px;
+        }
     </style>
 </head>
 <body>
 
     <div id="status">⏳ 接続準備中...</div>
-    <div id="loading">🔄 接続中...</div>
-    <button id="retryBtn" onclick="startTunnel()">🔄 再試行</button>
+    <div id="loading">🔄 トンネル起動中...</div>
+    <div id="url-box" style="display:none;">
+        <a href="#" target="_blank" id="tunnelLink">ここをクリックして開く</a>
+    </div>
+    <button class="btn" id="retryBtn" style="display:none;" onclick="startTunnel()">🔄 再試行</button>
+    <div class="note" id="note" style="display:none;">☝️ クリックすると別タブで開きます</div>
 
     <script>
         const API_WORKER = 'https://url.kurea-ch124.workers.dev/start';
         const API_WORKER_TAILSCALE = 'https://url.kurea-ch124.workers.dev/start?t=tailscale';
         const TOKEN = 'M0TrSmymz3L9rMEO5KOd6XE1XOD3zJxI';
         const TIMEOUT = 30000;
-        const WAIT_BEFORE_OPEN = 2000; // 2秒待機
 
         const statusEl = document.getElementById('status');
         const loadingEl = document.getElementById('loading');
+        const urlBox = document.getElementById('url-box');
+        const tunnelLink = document.getElementById('tunnelLink');
         const retryBtn = document.getElementById('retryBtn');
-
-        let newWindow = null;
+        const note = document.getElementById('note');
 
         function setStatus(msg, type = 'loading') {
             statusEl.textContent = msg;
@@ -41,24 +95,20 @@
 
         function showError(msg) {
             loadingEl.style.display = 'none';
+            urlBox.style.display = 'none';
+            note.style.display = 'none';
             setStatus('❌ ' + msg, 'error');
             retryBtn.style.display = 'inline-block';
         }
 
-        function openTunnel(url) {
+        function showUrl(url) {
             loadingEl.style.display = 'none';
-            setStatus(`✅ 接続成功！ ${WAIT_BEFORE_OPEN / 1000}秒後に開きます`, 'success');
+            setStatus('✅ トンネル起動完了！', 'success');
+            urlBox.style.display = 'block';
+            tunnelLink.href = url + '/guacamole';
+            tunnelLink.textContent = url + '/guacamole';
+            note.style.display = 'block';
             retryBtn.style.display = 'none';
-
-            // 2秒待ってから開く
-            setTimeout(() => {
-                newWindow = window.open(url + '/guacamole', '_blank');
-                if (!newWindow) {
-                    alert('ポップアップがブロックされました。許可してください。');
-                    setStatus('⚠️ ポップアップを許可してください', 'error');
-                    retryBtn.style.display = 'inline-block';
-                }
-            }, WAIT_BEFORE_OPEN);
         }
 
         function fetchWithTimeout(url, options, timeout) {
@@ -84,6 +134,8 @@
         async function startTunnel() {
             setStatus('🔄 接続中...', 'loading');
             loadingEl.style.display = 'block';
+            urlBox.style.display = 'none';
+            note.style.display = 'none';
             retryBtn.style.display = 'none';
 
             const apis = [
@@ -97,8 +149,8 @@
                     const tunnelUrl = await callAPI(api.url);
                     console.log(`✅ ${api.name} tunnel:`, tunnelUrl);
 
-                    // 2秒待ってから開く
-                    openTunnel(tunnelUrl);
+                    // URLを表示（クリックで開く）
+                    showUrl(tunnelUrl);
                     return;
                 } catch (e) {
                     console.warn(`⚠️ ${api.name} failed:`, e.message);
